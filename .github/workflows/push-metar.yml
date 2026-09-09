@@ -1,0 +1,57 @@
+name: Push METAR to Tidbyt
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      station:
+        description: "ICAO code to push (e.g. KEDN, KOZR, KDHN)"
+        required: false
+        default: "KEDN"
+
+env:
+  PIXLET_VERSION: "0.34.0"
+  STATION: ${{ github.event.inputs.station || 'KEDN' }}
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+
+      - name: Cache Pixlet
+        id: cache-pixlet
+        uses: actions/cache@v4
+        with:
+          path: pixlet
+          key: pixlet-${{ env.PIXLET_VERSION }}-linux-amd64
+
+      - name: Install Pixlet
+        if: steps.cache-pixlet.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o pixlet.tar.gz \
+            "https://github.com/tidbyt/pixlet/releases/download/v${PIXLET_VERSION}/pixlet_${PIXLET_VERSION}_linux_amd64.tar.gz"
+          tar -xzf pixlet.tar.gz pixlet
+          chmod +x pixlet
+
+      - name: Render
+        run: |
+          chmod +x pixlet
+          ./pixlet render metar.star "station=${STATION}" -o metar.webp
+          ls -l metar.webp
+
+      - name: Push to device
+        env:
+          TIDBYT_TOKEN: ${{ secrets.TIDBYT_TOKEN }}
+          TIDBYT_DEVICE: ${{ secrets.TIDBYT_DEVICE }}
+        run: |
+          if [ -z "$TIDBYT_TOKEN" ] || [ -z "$TIDBYT_DEVICE" ]; then
+            echo "::error::TIDBYT_TOKEN or TIDBYT_DEVICE secret is not set."
+            exit 1
+          fi
+          ./pixlet push --installation-id metar -t "$TIDBYT_TOKEN" "$TIDBYT_DEVICE" metar.webp
+          echo "Pushed ${STATION} at $(date -u '+%Y-%m-%d %H:%M:%SZ')"
