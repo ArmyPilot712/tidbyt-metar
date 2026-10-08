@@ -102,7 +102,7 @@ def layout_radar(planes):
                     children = [
                         background,
                         sweep_layer(sweep),
-                        blips_layer(planes, sel, sweep, f),
+                        blips_layer(planes, sweep),
                         card,
                     ],
                 ),
@@ -321,12 +321,10 @@ def sweep_layer(angle):
             kids.append(px(x, y, c))
     return render.Stack(children = kids)
 
-def blips_layer(planes, sel, sweep, f):
+def blips_layer(planes, sweep):
     kids = []
 
     for p in planes:
-        if p == sel:
-            continue
         color = alt_color(p)
 
         # Real-radar paint: the blip lights up as the sweep crosses it, then
@@ -350,15 +348,6 @@ def blips_layer(planes, sel, sweep, f):
             kids.append(px(x, y, mix(color, "#ffffff", 0.6)))
         else:
             kids.append(px(x, y, dim(color, bright)))
-
-    # Selected aircraft: solid white with a blinking target box.
-    x = int(math.round(sel["x"]))
-    y = int(math.round(sel["y"]))
-    if (f // 5) % 2 == 0:
-        for (dx, dy) in [(-2, -2), (-1, -2), (1, -2), (2, -2), (-2, -1), (2, -1), (-2, 1), (2, 1), (-2, 2), (-1, 2), (1, 2), (2, 2)]:
-            if 0 <= x + dx and x + dx < 32 and 0 <= y + dy and y + dy < 32:
-                kids.append(px(x + dx, y + dy, "#ffdd33"))
-    kids.append(px(x, y, "#ffffff"))
 
     return render.Stack(children = kids)
 
