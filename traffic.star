@@ -29,6 +29,8 @@ TTL = 30
 MAX_CARDS = 5  # nearest N aircraft get a card
 FRAMES_PER_CARD = 30  # x 100ms = 3 s per aircraft
 SWEEP_STEP = 12  # degrees per frame -> one sweep every 3 s
+BLIP_FLOOR = 0.15  # how faint a blip gets just before the sweep comes back
+BLIP_DECAY_DEG = 110.0  # how quickly a painted blip fades (degrees of sweep)
 
 # Radar geometry (left 32x32 half of the display)
 CX = 15
@@ -327,15 +329,27 @@ def blips_layer(planes, sel, sweep, f):
             continue
         color = alt_color(p)
 
-        # Afterglow: brightest right after the sweep passes, fades over a turn.
+        # Real-radar paint: the blip lights up as the sweep crosses it, then
+        # decays over the rest of the rotation to a faint ghost.
         since = (sweep - p["brg"] + 360) % 360
-        bright = 1.0 - 0.5 * (since / 360.0)
+        bright = BLIP_FLOOR + (1.0 - BLIP_FLOOR) * math.exp(-since / BLIP_DECAY_DEG)
+        x = int(math.round(p["x"]))
+        y = int(math.round(p["y"]))
 
         if p["track"] != None:
             tx = p["x"] - 1.5 * math.sin(math.radians(p["track"]))
             ty = p["y"] + 1.5 * math.cos(math.radians(p["track"]))
             kids.append(px(math.round(tx), math.round(ty), dim(color, bright * 0.35)))
-        kids.append(px(math.round(p["x"]), math.round(p["y"]), dim(color, bright)))
+
+        if since < SWEEP_STEP:
+            # The frame the sweep hits it: a bright, white-hot "paint" with a
+            # small glow around it.
+            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                if 0 <= x + dx and x + dx < 32 and 0 <= y + dy and y + dy < 32:
+                    kids.append(px(x + dx, y + dy, dim(color, 0.45)))
+            kids.append(px(x, y, mix(color, "#ffffff", 0.6)))
+        else:
+            kids.append(px(x, y, dim(color, bright)))
 
     # Selected aircraft: solid white with a blinking target box.
     x = int(math.round(sel["x"]))
@@ -443,6 +457,18 @@ def dim(hexcolor, factor):
     return out
 
 HEX = "0123456789abcdef"
+
+def mix(a, b, t):
+    """Blend hex color a toward b by t (0..1)."""
+    ha = a.lstrip("#")
+    hb = b.lstrip("#")
+    out = "#"
+    for i in [0, 2, 4]:
+        va = int(ha[i:i + 2], 16)
+        vb = int(hb[i:i + 2], 16)
+        v = max(0, min(255, int(va + (vb - va) * t)))
+        out += HEX[v // 16] + HEX[v % 16]
+    return out
 
 # ---------------------------------------------------------------- misc
 
