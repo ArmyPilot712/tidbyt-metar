@@ -41,7 +41,9 @@ jobs:
       - name: Render
         run: |
           chmod +x pixlet
-          ./pixlet render metar.star "station=${STATION}" -o metar.webp
+          # Pixlet loads every .star in a folder, so render from a folder of its own.
+          mkdir -p build/metar && cp metar.star build/metar/
+          ./pixlet render build/metar/metar.star "station=${STATION}" -o metar.webp
           ls -l metar.webp
 
       - name: Push to device
