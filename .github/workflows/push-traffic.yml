@@ -8,7 +8,7 @@ on:
       range:
         description: "Scope radius in nm (5, 10, 15, 25, 40, 60)"
         required: false
-        default: "25"
+        default: "15"
       layout:
         description: "radar, card, list, scope or pointer"
         required: false
@@ -21,7 +21,8 @@ env:
   # Falls back to downtown Enterprise, AL if they aren't set.
   LAT: ${{ secrets.TRAFFIC_LAT || '31.3152' }}
   LON: ${{ secrets.TRAFFIC_LON || '-85.8552' }}
-  RANGE: ${{ github.event.inputs.range || '25' }}
+  # Scheduled runs use repo variable TRAFFIC_RANGE if set, else 15 nm.
+  RANGE: ${{ github.event.inputs.range || vars.TRAFFIC_RANGE || '15' }}
   # Scheduled runs use repo variable TRAFFIC_LAYOUT if set.
   LAYOUT: ${{ github.event.inputs.layout || vars.TRAFFIC_LAYOUT || 'radar' }}
 
