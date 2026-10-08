@@ -48,8 +48,14 @@ def main(config):
     range_nm = int(config.str("range", str(DEFAULT_RANGE_NM)))
     show_ground = config.bool("show_ground", False)
 
+    prefetched = config.get("aircraft")
     if config.bool("demo", False):
         raw = demo_aircraft(lat, lon)
+    elif prefetched:
+        # Data fetched by the GitHub workflow (retries, fallbacks, and no
+        # coordinates in public logs). {"error": true} means every feed failed.
+        body = json.decode(prefetched)
+        raw = None if body.get("error") else (body.get("ac") or [])
     else:
         raw = fetch_aircraft(lat, lon, range_nm)
 
