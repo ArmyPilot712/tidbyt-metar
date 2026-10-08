@@ -16,10 +16,11 @@ on:
 
 env:
   PIXLET_VERSION: "0.34.0"
-  # Center of the scope. Defaults to Enterprise, AL; set repo variables
-  # TRAFFIC_LAT / TRAFFIC_LON to move it without editing this file.
-  LAT: ${{ vars.TRAFFIC_LAT || '31.3152' }}
-  LON: ${{ vars.TRAFFIC_LON || '-85.8552' }}
+  # Center of the scope comes from repo SECRETS TRAFFIC_LAT / TRAFFIC_LON so a
+  # home location never shows up in this public repo or its run logs.
+  # Falls back to downtown Enterprise, AL if they aren't set.
+  LAT: ${{ secrets.TRAFFIC_LAT || '31.3152' }}
+  LON: ${{ secrets.TRAFFIC_LON || '-85.8552' }}
   RANGE: ${{ github.event.inputs.range || '25' }}
   # Scheduled runs use repo variable TRAFFIC_LAYOUT if set.
   LAYOUT: ${{ github.event.inputs.layout || vars.TRAFFIC_LAYOUT || 'radar' }}
@@ -51,7 +52,9 @@ jobs:
       - name: Render
         run: |
           chmod +x pixlet
-          ./pixlet render traffic.star "lat=${LAT}" "lon=${LON}" "range=${RANGE}" "layout=${LAYOUT}" -o traffic.webp
+          # Pixlet loads every .star in a folder, so render from a folder of its own.
+          mkdir -p build/traffic && cp traffic.star build/traffic/
+          ./pixlet render build/traffic/traffic.star "lat=${LAT}" "lon=${LON}" "range=${RANGE}" "layout=${LAYOUT}" -o traffic.webp
           ls -l traffic.webp
 
       - name: Push to device
@@ -66,4 +69,4 @@ jobs:
           # --background: update the rotation slot without yanking the screen
           # away from whatever app is showing right now.
           ./pixlet push --background --installation-id traffic -t "$TIDBYT_TOKEN" "$TIDBYT_DEVICE" traffic.webp
-          echo "Pushed traffic (${LAT}, ${LON}, ${RANGE}nm) at $(date -u '+%Y-%m-%d %H:%M:%SZ')"
+          echo "Pushed traffic (${RANGE}nm, ${LAYOUT}) at $(date -u '+%Y-%m-%d %H:%M:%SZ')"
