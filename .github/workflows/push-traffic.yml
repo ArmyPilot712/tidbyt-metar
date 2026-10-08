@@ -49,12 +49,36 @@ jobs:
           tar -xzf pixlet.tar.gz pixlet
           chmod +x pixlet
 
+      - name: Fetch traffic
+        # The request URLs contain the home coordinates, so nothing here echoes
+        # them: curl errors go to /dev/null and we only log which feed worked.
+        run: |
+          FEEDS=(
+            "adsb.lol|https://api.adsb.lol/v2/point/${LAT}/${LON}/${RANGE}"
+            "airplanes.live|https://api.airplanes.live/v2/point/${LAT}/${LON}/${RANGE}"
+            "adsb.fi|https://opendata.adsb.fi/api/v2/lat/${LAT}/lon/${LON}/dist/${RANGE}"
+          )
+          echo '{"error":true}' > aircraft.json
+          for entry in "${FEEDS[@]}"; do
+            name="${entry%%|*}"; url="${entry#*|}"
+            if curl -fsS --max-time 20 --retry 2 --retry-delay 3 -A "tidbyt-traffic" -o raw.json "$url" 2>/dev/null \
+               && jq -e '(.ac // .aircraft) | type == "array"' raw.json >/dev/null 2>&1; then
+              # Keep only the fields the app uses so the config stays small.
+              jq -c '{ac: [(.ac // .aircraft)[] | {flight, r, t, hex, alt_baro, baro_rate, geom_rate, gs, track, lat, lon, dbFlags}]}' raw.json > aircraft.json
+              echo "Got $(jq '.ac | length' aircraft.json) aircraft from ${name}"
+              break
+            fi
+            echo "${name} failed, trying next feed"
+          done
+          rm -f raw.json
+
       - name: Render
         run: |
           chmod +x pixlet
           # Pixlet loads every .star in a folder, so render from a folder of its own.
           mkdir -p build/traffic && cp traffic.star build/traffic/
-          ./pixlet render build/traffic/traffic.star "lat=${LAT}" "lon=${LON}" "range=${RANGE}" "layout=${LAYOUT}" -o traffic.webp
+          ./pixlet render build/traffic/traffic.star "lat=${LAT}" "lon=${LON}" "range=${RANGE}" "layout=${LAYOUT}" \
+            "aircraft=$(cat aircraft.json)" -o traffic.webp
           ls -l traffic.webp
 
       - name: Push to device
