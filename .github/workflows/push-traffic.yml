@@ -1,0 +1,69 @@
+name: Push Traffic to Tidbyt
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # GitHub's minimum; real runs often land every 5-15 min
+  workflow_dispatch:
+    inputs:
+      range:
+        description: "Scope radius in nm (5, 10, 15, 25, 40, 60)"
+        required: false
+        default: "25"
+      layout:
+        description: "radar, card, list, scope or pointer"
+        required: false
+        default: "radar"
+
+env:
+  PIXLET_VERSION: "0.34.0"
+  # Center of the scope. Defaults to Enterprise, AL; set repo variables
+  # TRAFFIC_LAT / TRAFFIC_LON to move it without editing this file.
+  LAT: ${{ vars.TRAFFIC_LAT || '31.3152' }}
+  LON: ${{ vars.TRAFFIC_LON || '-85.8552' }}
+  RANGE: ${{ github.event.inputs.range || '25' }}
+  # Scheduled runs use repo variable TRAFFIC_LAYOUT if set.
+  LAYOUT: ${{ github.event.inputs.layout || vars.TRAFFIC_LAYOUT || 'radar' }}
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+
+      - name: Cache Pixlet
+        id: cache-pixlet
+        uses: actions/cache@v4
+        with:
+          path: pixlet
+          key: pixlet-${{ env.PIXLET_VERSION }}-linux-amd64
+
+      - name: Install Pixlet
+        if: steps.cache-pixlet.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o pixlet.tar.gz \
+            "https://github.com/tidbyt/pixlet/releases/download/v${PIXLET_VERSION}/pixlet_${PIXLET_VERSION}_linux_amd64.tar.gz"
+          tar -xzf pixlet.tar.gz pixlet
+          chmod +x pixlet
+
+      - name: Render
+        run: |
+          chmod +x pixlet
+          ./pixlet render traffic.star "lat=${LAT}" "lon=${LON}" "range=${RANGE}" "layout=${LAYOUT}" -o traffic.webp
+          ls -l traffic.webp
+
+      - name: Push to device
+        env:
+          TIDBYT_TOKEN: ${{ secrets.TIDBYT_TOKEN }}
+          TIDBYT_DEVICE: ${{ secrets.TIDBYT_DEVICE }}
+        run: |
+          if [ -z "$TIDBYT_TOKEN" ] || [ -z "$TIDBYT_DEVICE" ]; then
+            echo "::error::TIDBYT_TOKEN or TIDBYT_DEVICE secret is not set."
+            exit 1
+          fi
+          # --background: update the rotation slot without yanking the screen
+          # away from whatever app is showing right now.
+          ./pixlet push --background --installation-id traffic -t "$TIDBYT_TOKEN" "$TIDBYT_DEVICE" traffic.webp
+          echo "Pushed traffic (${LAT}, ${LON}, ${RANGE}nm) at $(date -u '+%Y-%m-%d %H:%M:%SZ')"
